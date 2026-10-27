@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Vorrats- & Einkaufsmanager</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- HTML5 QR Code Scanner -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  
+  <style>
+    /* Verhindert Pull-to-Refresh & Overscroll auf Mobilgeräten */
+    body {
+      overscroll-behavior-y: contain;
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background-color: #cbd5e1;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col text-slate-800 antialiased select-none">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-20 px-4 py-3 flex items-center justify-between shadow-xs">
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-sm">
+        <i data-lucide="package" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-base tracking-tight leading-none text-slate-900">VorratsKammer</h1>
+        <p class="text-[11px] text-slate-500 font-medium mt-0.5" id="headerSubtitle">Zuhause im Blick</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button onclick="openManualAddModal()" class="p-2 rounded-xl text-slate-600 hover:bg-slate-100 active:scale-95 transition-all text-xs font-semibold flex items-center gap-1" title="Manuell anlegen">
+        <i data-lucide="plus-circle" class="w-5 h-5 text-emerald-600"></i>
+      </button>
+      <button onclick="openDataSettingsModal()" class="p-2 rounded-xl text-slate-600 hover:bg-slate-100 active:scale-95 transition-all" title="Daten & Backup">
+        <i data-lucide="settings" class="w-5 h-5 text-slate-500"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Notification Toast Alert -->
+  <div id="toast" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none transition-all duration-300 opacity-0 -translate-y-2 flex items-center gap-2 px-4 py-2.5 bg-slate-900/95 text-white rounded-2xl shadow-xl text-xs font-medium backdrop-blur-md max-w-[90vw]">
+    <i id="toastIcon" data-lucide="check-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+    <span id="toastMessage">Aktion erfolgreich</span>
+  </div>
+
+  <!-- Search & Category Filters (Global Context Bar) -->
+  <section class="bg-white border-b border-slate-200 px-4 pt-2.5 pb-2.5 z-10 space-y-2">
+    <!-- Suchleiste -->
+    <div class="relative">
+      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+      <input type="text" id="searchInput" oninput="handleSearch(this.value)" placeholder="Produkt, Marke oder Barcode suchen..." class="w-full pl-9 pr-8 py-2 bg-slate-100 border border-slate-200/80 rounded-xl text-sm focus:outline-hidden focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all placeholder:text-slate-400">
+      <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <!-- Kategorien-Chips -->
+    <div class="flex items-center gap-1.5 overflow-x-auto custom-scroll pb-1 text-xs font-medium no-scrollbar" id="categoryChips">
+      <!-- Wird dynamisch befüllt -->
+    </div>
+  </section>
+
+  <!-- Hauptinhalt (Scrollbereich) -->
+  <main class="flex-1 overflow-y-auto px-4 py-3 custom-scroll pb-28" id="mainContainer">
+    <!-- Tab 1: Bestand (Zuhause) -->
+    <div id="viewStock" class="space-y-2.5">
+      <div class="flex items-center justify-between px-1 text-xs text-slate-500 font-semibold uppercase tracking-wider">
+        <span id="stockCountLabel">0 Artikel vorhanden</span>
+        <span class="text-[11px] font-normal lowercase">alphabetisch sortiert</span>
+      </div>
+      <div id="stockList" class="space-y-2">
+        <!-- Dynamische Vorratskarten -->
+      </div>
+    </div>
+
+    <!-- Tab 2: Einkaufsliste -->
+    <div id="viewShopping" class="hidden space-y-2.5">
+      <div class="flex items-center justify-between px-1 text-xs text-slate-500 font-semibold uppercase tracking-wider">
+        <span id="shoppingCountLabel">0 Artikel zu besorgen</span>
+        <button onclick="clearCompletedShopping()" class="text-xs text-emerald-600 hover:text-emerald-700 capitalize font-medium flex items-center gap-1">
+          <i data-lucide="check" class="w-3.5 h-3.5"></i> Gekaufte einlagern
+        </button>
+      </div>
+      <div id="shoppingList" class="space-y-2">
+        <!-- Dynamische Einkaufsliste -->
+      </div>
+    </div>
+  </main>
+
+  <!-- Floating Scan Button -->
+  <div class="fixed bottom-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+    <button onclick="openScannerModal()" class="pointer-events-auto bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white p-4 rounded-full shadow-lg shadow-emerald-600/30 border-4 border-slate-50 flex items-center justify-center transition-all duration-200 group">
+      <i data-lucide="scan-barcode" class="w-7 h-7 group-hover:scale-110 transition-transform"></i>
+    </button>
+  </div>
+
+  <!-- Bottom Navigation Bar -->
+  <nav class="bg-white/95 backdrop-blur-md border-t border-slate-200 fixed bottom-0 left-0 right-0 z-20 px-6 py-2 flex justify-between items-center text-xs">
+    <button id="navTabStock" onclick="switchTab('stock')" class="flex flex-col items-center gap-1 font-semibold text-emerald-600 transition-colors w-24">
+      <i data-lucide="boxes" class="w-5 h-5"></i>
+      <span>Vorrat</span>
+    </button>
+
+    <div class="w-12 text-center text-[10px] text-slate-400 font-bold -mb-4 tracking-tighter">
+      SCAN
+    </div>
+
+    <button id="navTabShopping" onclick="switchTab('shopping')" class="flex flex-col items-center gap-1 font-medium text-slate-400 hover:text-slate-600 transition-colors relative w-24">
+      <div class="relative">
+        <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+        <span id="shoppingBadge" class="hidden absolute -top-1.5 -right-2 bg-rose-500 text-white rounded-full text-[10px] font-bold px-1.5 py-0.2 leading-tight min-w-4 text-center">0</span>
+      </div>
+      <span>Einkaufsliste</span>
+    </button>
+  </nav>
+
+  <!-- ================= MODALS ================= -->
+
+  <!-- Modal: Barcode Scanner -->
+  <div id="scannerModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex flex-col items-center justify-end sm:justify-center p-0 sm:p-4 transition-opacity">
+    <div class="bg-slate-900 border border-slate-800 text-white w-full max-w-lg rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+      <!-- Header -->
+      <div class="p-4 flex items-center justify-between border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <i data-lucide="camera" class="w-5 h-5 text-emerald-400"></i>
+          <h2 class="font-bold text-sm sm:text-base">Barcode scannen</h2>
+        </div>
+        <button onclick="closeScannerModal()" class="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Kamera Viewport -->
+      <div class="relative bg-black w-full min-h-[260px] max-h-[360px] flex items-center justify-center overflow-hidden">
+        <div id="reader" class="w-full"></div>
+        <div class="pointer-events-none absolute inset-0 border-2 border-emerald-500/40 rounded-2xl m-8 flex items-center justify-center">
+          <div class="w-48 h-0.5 bg-emerald-400/80 shadow-[0_0_12px_rgba(52,211,153,0.8)] animate-pulse"></div>
+        </div>
+      </div>
+
+      <!-- Manuelle Eingabe & Status -->
+      <div class="p-4 bg-slate-900 border-t border-slate-800 space-y-3">
+        <div id="scannerStatusText" class="text-xs text-center text-slate-400">
+          Richte die Kamera ruhig auf den Barcode (EAN / UPC / QR)
+        </div>
+
+        <div class="pt-2 border-t border-slate-800">
+          <label class="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+            Manuelle EAN / Barcode-Nummer
+          </label>
+          <form onsubmit="handleManualBarcodeSubmit(event)" class="flex gap-2">
+            <input type="tel" id="manualBarcodeInput" pattern="[0-9]*" placeholder="z. B. 4008400404127" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-hidden focus:border-emerald-500">
+            <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 active:scale-95 px-4 py-2 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5">
+              <span>Suchen</span>
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Produkt Anlegen / Bearbeiten -->
+  <div id="productModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col animate-in fade-in duration-200">
+      <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <h3 id="productModalTitle" class="font-bold text-base text-slate-900">Neues Produkt hinzufügen</h3>
+          <p id="productModalSub" class="text-xs text-slate-500">Produktdetails prüfen & speichern</p>
+        </div>
+        <button onclick="closeProductModal()" class="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="productForm" onsubmit="saveProductModal(event)" class="p-4 space-y-3.5 overflow-y-auto custom-scroll">
+        <input type="hidden" id="formProductId">
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Barcode / EAN <span class="text-rose-500">*</span></label>
+          <div class="relative">
+            <input type="text" id="formBarcode" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 font-mono focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden">
+            <button type="button" onclick="fetchApiForBarcode()" class="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-[11px] font-semibold text-slate-700 rounded-lg transition-colors">
+              API laden
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Produktname <span class="text-rose-500">*</span></label>
+          <input type="text" id="formName" required placeholder="z. B. Vollmilch 3.5%" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Marke</label>
+            <input type="text" id="formBrand" placeholder="z. B. Weihenstephan" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Menge / Einheit</label>
+            <input type="text" id="formQuantityUnit" placeholder="z. B. 1 Liter / 500g" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Kategorie</label>
+            <select id="formCategory" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-hidden">
+              <option value="Lebensmittel">Lebensmittel</option>
+              <option value="Milchprodukte">Milchprodukte</option>
+              <option value="Getränke">Getränke</option>
+              <option value="Snacks & Süßes">Snacks & Süßes</option>
+              <option value="Haushalt & Reinigung">Haushalt & Reinigung</option>
+              <option value="Drogerie & Pflege">Drogerie & Pflege</option>
+              <option value="Sonstiges">Sonstiges</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Aktueller Bestand</label>
+            <div class="flex items-center">
+              <button type="button" onclick="adjustFormCount(-1)" class="w-9 h-9 border border-slate-200 bg-slate-100 rounded-l-xl font-bold text-slate-600 hover:bg-slate-200">-</button>
+              <input type="number" id="formStockCount" min="0" value="1" class="w-full h-9 border-y border-slate-200 text-center font-bold text-sm outline-hidden">
+              <button type="button" onclick="adjustFormCount(1)" class="w-9 h-9 border border-slate-200 bg-slate-100 rounded-r-xl font-bold text-slate-600 hover:bg-slate-200">+</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-2 flex gap-2">
+          <button type="button" onclick="closeProductModal()" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium text-xs hover:bg-slate-50 active:scale-95 transition-all">
+            Abbrechen
+          </button>
+          <button type="submit" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 active:scale-95 transition-all">
+            Speichern
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Einstellungen & Daten-Reset -->
+  <div id="settingsModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b pb-3 border-slate-100">
+        <h3 class="font-bold text-slate-900 text-sm">Vorrats-Einstellungen</h3>
+        <button onclick="closeDataSettingsModal()" class="text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2 text-xs text-slate-600">
+        <p>Alle Daten werden lokal in deinem Browser (LocalStorage) gespeichert.</p>
+        <button onclick="loadSampleData(true)" class="w-full py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-medium text-left flex items-center justify-between">
+          <span>Beispieldaten laden</span>
+          <i data-lucide="refresh-cw" class="w-4 h-4 text-slate-500"></i>
+        </button>
+        <button onclick="exportDataJson()" class="w-full py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-medium text-left flex items-center justify-between">
+          <span>Vorratsdaten sichern (Backup JSON)</span>
+          <i data-lucide="download" class="w-4 h-4 text-slate-500"></i>
+        </button>
+        <button onclick="clearAllData()" class="w-full py-2.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-medium text-left flex items-center justify-between">
+          <span>Alle Einträge löschen</span>
+          <i data-lucide="trash-2" class="w-4 h-4 text-rose-600"></i>
+        </button>
+      </div>
+
+      <div class="pt-1 text-center">
+        <button onclick="closeDataSettingsModal()" class="w-full py-2 bg-slate-800 text-white rounded-xl text-xs font-semibold">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Synthesizer für Piepton ohne externe MP3 -->
+  <script>
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(type = 'success') {
+      try {
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'success') {
+          osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+          osc.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.12);
+          gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.13);
+        } else if (type === 'added') {
+          osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+          osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.08); // E5
+          gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.19);
+        }
+      } catch (e) {
+        console.warn('Audio Context nicht verfügbar:', e);
+      }
+
+      // Haptisches Feedback falls vom Smartphone unterstützt
+      if ('vibrate' in navigator) {
+        try {
+          navigator.vibrate(80);
+        } catch(e) {}
+      }
+    }
+  </script>
+
+  <!-- Haupt-App Logik -->
+  <script>
+    const STORAGE_KEY = 'vorratskammer_items_v1';
+    let currentTab = 'stock';
+    let activeCategory = 'Alle';
+    let searchQuery = '';
+    let html5QrScanner = null;
+    let isProcessingScan = false;
+
+    // Standard-Beispielartikel (inkl. realistische Barcodes für OpenFoodFacts / Tests)
+    const SAMPLE_ITEMS = [
+      {
+        id: 'sample-1',
+        barcode: '4008400404127',
+        name: 'Nutella',
+        brand: 'Ferrero',
+        quantityUnit: '450g',
+        category: 'Snacks & Süßes',
+        stockCount: 1,
+        onShoppingList: false,
+        shoppingAmount: 1,
+        updatedAt: Date.now() - 3600000
+      },
+      {
+        id: 'sample-2',
+        barcode: '4014400900019',
+        name: 'Kondensmilch',
+        brand: 'Bärenmarke',
+        quantityUnit: '340g',
+        category: 'Milchprodukte',
+        stockCount: 2,
+        onShoppingList: false,
+        shoppingAmount: 1,
+        updatedAt: Date.now() - 7200000
+      },
+      {
+        id: 'sample-3',
+        barcode: '4005900119421',
+        name: 'Nivea Creme',
+        brand: 'Nivea',
+        quantityUnit: '150ml',
+        category: 'Drogerie & Pflege',
+        stockCount: 0,
+        onShoppingList: true,
+        shoppingAmount: 1,
+        updatedAt: Date.now() - 100000
+      },
+      {
+        id: 'sample-4',
+        barcode: '8001090172464',
+        name: 'Fairy Ultra Spülmittel',
+        brand: 'Fairy',
+        quantityUnit: '450ml',
+        category: 'Haushalt & Reinigung',
+        stockCount: 1,
+        onShoppingList: false,
+        shoppingAmount: 1,
+        updatedAt: Date.now() - 5000000
+      },
+      {
+        id: 'sample-5',
+        barcode: '4008400201122',
+        name: 'Kinder Riegel',
+        brand: 'Ferrero',
+        quantityUnit: '10 Riegel',
+        category: 'Snacks & Süßes',
+        stockCount: 0,
+        onShoppingList: true,
+        shoppingAmount: 2,
+        updatedAt: Date.now() - 20000
+      },
+      {
+        id: 'sample-6',
+        barcode: '4000417025005',
+        name: 'Mineralwasser Medium',
+        brand: 'Gerolsteiner',
+        quantityUnit: '1.0 L',
+        category: 'Getränke',
+        stockCount: 4,
+        onShoppingList: false,
+        shoppingAmount: 1,
+        updatedAt: Date.now() - 4000000
+      }
+    ];
+
+    // Datenhaltung
+    let items = [];
+
+    // Initialisierung
+    window.addEventListener('DOMContentLoaded', () => {
+      loadItems();
+      renderAll();
+      lucide.createIcons();
+    });
+
+    function loadItems() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          items = JSON.parse(stored);
+        } else {
+          items = [...SAMPLE_ITEMS];
+          saveItems();
+        }
+      } catch (e) {
+        items = [...SAMPLE_ITEMS];
+      }
+    }
+
+    function saveItems() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      } catch (e) {
+        showToast('Fehler beim Speichern im Speicher!', 'alert-triangle');
+      }
+    }
+
+    // UI Renderings
+    function renderAll() {
+      renderCategoryChips();
+      renderStockList();
+      renderShoppingList();
+      updateBadges();
+      lucide.createIcons();
+    }
+
+    function updateBadges() {
+      const shoppingNeedCount = items.filter(i => i.onShoppingList).length;
+      const shoppingBadge = document.getElementById('shoppingBadge');
+      if (shoppingNeedCount > 0) {
+        shoppingBadge.textContent = shoppingNeedCount;
+        shoppingBadge.classList.remove('hidden');
+      } else {
+        shoppingBadge.classList.add('hidden');
+      }
+    }
+
+    function renderCategoryChips() {
+      const categories = ['Alle', 'Lebensmittel', 'Milchprodukte', 'Getränke', 'Snacks & Süßes', 'Haushalt & Reinigung', 'Drogerie & Pflege', 'Sonstiges'];
+      const container = document.getElementById('categoryChips');
+      
+      container.innerHTML = categories.map(cat => {
+        const isActive = activeCategory === cat;
+        return `
+          <button onclick="setCategoryFilter('${cat}')" class="px-3 py-1.5 rounded-full whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            isActive 
+              ? 'bg-slate-900 text-white font-semibold shadow-xs' 
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }">
+            <span>${cat}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function setCategoryFilter(cat) {
+      activeCategory = cat;
+      renderAll();
+    }
+
+    function handleSearch(val) {
+      searchQuery = val.trim().toLowerCase();
+      const clearBtn = document.getElementById('clearSearchBtn');
+      if (searchQuery.length > 0) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+      renderStockList();
+      renderShoppingList();
+      lucide.createIcons();
+    }
+
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      handleSearch('');
+    }
+
+    // Filter & Sortierung: Streng alphabetisch nach deutschem Standard
+    function getFilteredItems(onlyStock = true) {
+      let filtered = items.filter(item => {
+        if (onlyStock) {
+          // Vorrat zeigt Artikel mit stockCount > 0 (oder solche, die nicht explizit nur auf der Einkaufsliste stehen)
+          // Wir zeigen alle im Vorrat, aber mit Status "Leer" wenn 0
+          if (item.stockCount <= 0 && item.onShoppingList) return false;
+        } else {
+          // Einkaufsliste zeigt Artikel mit onShoppingList === true
+          if (!item.onShoppingList) return false;
+        }
+
+        // Kategorie-Filter
+        if (activeCategory !== 'Alle' && item.category !== activeCategory) {
+          return false;
+        }
+
+        // Suchbegriff
+        if (searchQuery) {
+          const matchName = (item.name || '').toLowerCase().includes(searchQuery);
+          const matchBrand = (item.brand || '').toLowerCase().includes(searchQuery);
+          const matchBarcode = (item.barcode || '').toLowerCase().includes(searchQuery);
+          const matchCat = (item.category || '').toLowerCase().includes(searchQuery);
+          return matchName || matchBrand || matchBarcode || matchCat;
+        }
+
+        return true;
+      });
+
+      // Alphabetische Sortierung nach Produktname
+      filtered.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de', { sensitivity: 'base' }));
+      return filtered;
+    }
+
+    // Render Vorratsliste
+    function renderStockList() {
+      const container = document.getElementById('stockList');
+      const filtered = getFilteredItems(true);
+      const stockCountLabel = document.getElementById('stockCountLabel');
+      
+      const totalAvailable = items.filter(i => (i.stockCount || 0) > 0).length;
+      stockCountLabel.textContent = `${totalAvailable} Artikel auf Lager`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 px-4 bg-white rounded-2xl border border-dashed border-slate-200">
+            <div class="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400 mb-3">
+              <i data-lucide="package-open" class="w-6 h-6"></i>
+            </div>
+            <p class="font-semibold text-slate-700 text-sm">Keine Artikel im Vorrat gefunden</p>
+            <p class="text-xs text-slate-400 mt-1">Scanne einen Barcode oder lege ein Produkt manuell an.</p>
+            <button onclick="openScannerModal()" class="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-sm">
+              <i data-lucide="scan-barcode" class="w-4 h-4"></i> Jetzt scannen
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => {
+        const isOutOfStock = item.stockCount <= 0;
+        return `
+          <div class="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all flex flex-col gap-2.5 ${isOutOfStock ? 'opacity-60 bg-slate-50' : ''}">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                    ${escapeHtml(item.category || 'Sonstiges')}
+                  </span>
+                  ${item.brand ? `<span class="text-xs text-slate-400 truncate">${escapeHtml(item.brand)}</span>` : ''}
+                </div>
+                <h3 class="font-bold text-slate-900 text-sm sm:text-base mt-1 truncate">
+                  ${escapeHtml(item.name)}
+                </h3>
+                <div class="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                  ${item.quantityUnit ? `<span class="font-medium text-slate-600">${escapeHtml(item.quantityUnit)}</span> • ` : ''}
+                  <span class="font-mono text-[11px] text-slate-400">#${escapeHtml(item.barcode)}</span>
+                </div>
+              </div>
+
+              <!-- Schnell-Menü Aktionen -->
+              <div class="flex items-center gap-1 shrink-0">
+                <button onclick="editProduct('${item.id}')" class="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100" title="Bearbeiten">
+                  <i data-lucide="pencil" class="w-4 h-4"></i>
+                </button>
+                <button onclick="deleteProduct('${item.id}')" class="p-1.5 text-slate-300 hover:text-rose-600 rounded-lg hover:bg-rose-50" title="Löschen">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Interaktionsleiste: Vorratsmenge & "Aufgebraucht" Button -->
+            <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+              <!-- Menge Steuerung -->
+              <div class="flex items-center gap-2">
+                <div class="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-0.5">
+                  <button onclick="updateStock('${item.id}', -1)" class="w-7 h-7 flex items-center justify-center font-bold text-slate-700 hover:bg-white rounded-lg transition-colors active:scale-95" title="Menge -1">
+                    -
+                  </button>
+                  <span class="w-8 text-center font-bold text-sm text-slate-900">${item.stockCount}</span>
+                  <button onclick="updateStock('${item.id}', 1)" class="w-7 h-7 flex items-center justify-center font-bold text-slate-700 hover:bg-white rounded-lg transition-colors active:scale-95" title="Menge +1">
+                    +
+                  </button>
+                </div>
+                <span class="text-[11px] text-slate-400 font-medium">im Vorrat</span>
+              </div>
+
+              <!-- Button: Aufgebraucht -> Direkt zur Einkaufsliste -->
+              <button onclick="markAsUsedUp('${item.id}')" class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-700 font-semibold rounded-xl border border-amber-200 flex items-center gap-1.5 transition-all text-xs">
+                <i data-lucide="shopping-bag" class="w-3.5 h-3.5"></i>
+                <span>Aufbrauchen</span>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Render Einkaufsliste
+    function renderShoppingList() {
+      const container = document.getElementById('shoppingList');
+      const filtered = getFilteredItems(false);
+      const shoppingCountLabel = document.getElementById('shoppingCountLabel');
+      
+      shoppingCountLabel.textContent = `${filtered.length} Artikel zu besorgen`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 px-4 bg-white rounded-2xl border border-dashed border-slate-200">
+            <div class="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-600 mb-3">
+              <i data-lucide="smile" class="w-6 h-6"></i>
+            </div>
+            <p class="font-semibold text-slate-800 text-sm">Alles daheim!</p>
+            <p class="text-xs text-slate-400 mt-1">Deine Einkaufsliste ist leer. Wenn ein Produkt all wird, wandert es hierher.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => {
+        return `
+          <div class="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between gap-3 hover:border-slate-300 transition-all">
+            <div class="flex items-center gap-3 min-w-0">
+              <button onclick="markAsPurchased('${item.id}')" class="w-6 h-6 rounded-lg border-2 border-slate-300 hover:border-emerald-600 hover:bg-emerald-50 flex items-center justify-center text-transparent hover:text-emerald-600 transition-colors shrink-0" title="Als gekauft markieren">
+                <i data-lucide="check" class="w-4 h-4"></i>
+              </button>
+              <div class="min-w-0">
+                <h4 class="font-bold text-slate-900 text-sm truncate">${escapeHtml(item.name)}</h4>
+                <div class="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                  ${item.brand ? `<span>${escapeHtml(item.brand)}</span> • ` : ''}
+                  <span>${escapeHtml(item.quantityUnit || '1 Stk')}</span>
+                  <span class="text-amber-700 bg-amber-50 font-semibold px-1.5 py-0.2 rounded-sm text-[10px]">Bedarf: ${item.shoppingAmount || 1}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Schnell-Kauf Button -->
+            <button onclick="markAsPurchased('${item.id}')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shrink-0 shadow-xs transition-all">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+              <span>Gekauft</span>
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Tabs wechseln
+    function switchTab(tab) {
+      currentTab = tab;
+      const viewStock = document.getElementById('viewStock');
+      const viewShopping = document.getElementById('viewShopping');
+      const navStock = document.getElementById('navTabStock');
+      const navShopping = document.getElementById('navTabShopping');
+      const headerSubtitle = document.getElementById('headerSubtitle');
+
+      if (tab === 'stock') {
+        viewStock.classList.remove('hidden');
+        viewShopping.classList.add('hidden');
+        navStock.className = "flex flex-col items-center gap-1 font-semibold text-emerald-600 transition-colors w-24";
+        navShopping.className = "flex flex-col items-center gap-1 font-medium text-slate-400 hover:text-slate-600 transition-colors relative w-24";
+        headerSubtitle.textContent = "Zuhause im Blick";
+      } else {
+        viewStock.classList.add('hidden');
+        viewShopping.classList.remove('hidden');
+        navStock.className = "flex flex-col items-center gap-1 font-medium text-slate-400 hover:text-slate-600 transition-colors w-24";
+        navShopping.className = "flex flex-col items-center gap-1 font-semibold text-emerald-600 transition-colors relative w-24";
+        headerSubtitle.textContent = "Was fehlt / Einkaufen";
+      }
+      renderAll();
+    }
+
+    // ================= SCANNER LOGIK =================
+
+    function openScannerModal() {
+      const modal = document.getElementById('scannerModal');
+      modal.classList.remove('hidden');
+      document.getElementById('manualBarcodeInput').value = '';
+      setScannerStatus('Starte Kamera...');
+
+      // Scanner starten
+      setTimeout(() => {
+        startCameraScanner();
+      }, 150);
+    }
+
+    function closeScannerModal() {
+      stopCameraScanner();
+      const modal = document.getElementById('scannerModal');
+      modal.classList.add('hidden');
+    }
+
+    function setScannerStatus(text) {
+      const el = document.getElementById('scannerStatusText');
+      if (el) el.textContent = text;
+    }
+
+    function startCameraScanner() {
+      if (html5QrScanner) {
+        try { html5QrScanner.stop(); } catch(e){}
+      }
+
+      html5QrScanner = new Html5Qrcode("reader");
+      const config = { 
+        fps: 10, 
+        qrbox: { width: 250, height: 160 },
+        aspectRatio: 1.333
+      };
+
+      html5QrScanner.start(
+        { facingMode: "environment" }, 
+        config,
+        onBarcodeDetected,
+        (errorMessage) => {
+          // Scanner sucht weiter
+        }
+      ).then(() => {
+        setScannerStatus("Kamera aktiv. Halte einen Barcode ins Bild.");
+      }).catch(err => {
+        console.warn("Kamerazugriff verweigert/fehlgeschlagen:", err);
+        setScannerStatus("Kamera konnte nicht gestartet werden. Bitte nutze die manuelle Eingabe unten.");
+      });
+    }
+
+    function stopCameraScanner() {
+      if (html5QrScanner) {
+        html5QrScanner.stop().then(() => {
+          html5QrScanner.clear();
+        }).catch(() => {});
+      }
+    }
+
+    // Hauptfunktion: Wenn ein Barcode erfasst wird
+    async function onBarcodeDetected(decodedText) {
+      if (isProcessingScan) return;
+      isProcessingScan = true;
+
+      playBeep('success');
+      setScannerStatus(`Barcode erkannt: ${decodedText}`);
+
+      // Scanner sofort pausieren
+      closeScannerModal();
+
+      await processBarcode(decodedText.trim());
+
+      setTimeout(() => {
+        isProcessingScan = false;
+      }, 1200);
+    }
+
+    function handleManualBarcodeSubmit(e) {
+      e.preventDefault();
+      const code = document.getElementById('manualBarcodeInput').value.trim();
+      if (!code) return;
+      closeScannerModal();
+      processBarcode(code);
+    }
+
+    // Kernlogik gemäß Anforderung:
+    // a) Auf Einkaufsliste -> "Eingekauft! Zurück in den Vorrat" (Einkaufsliste weg, Vorrat +1)
+    // b) Schon im Bestand -> Menge +1
+    // c) Neu -> API Abruf oder Erfassungsmodal
+    async function processBarcode(barcode) {
+      showToast(`Prüfe Barcode: ${barcode}...`, 'loader');
+
+      const existingItem = items.find(i => i.barcode === barcode);
+
+      if (existingItem) {
+        if (existingItem.onShoppingList) {
+          // Fall a: Stand auf der Einkaufsliste
+          existingItem.onShoppingList = false;
+          existingItem.stockCount = (existingItem.stockCount || 0) + (existingItem.shoppingAmount || 1);
+          existingItem.shoppingAmount = 1;
+          existingItem.updatedAt = Date.now();
+          saveItems();
+          playBeep('added');
+          showToast(`Eingekauft! "${existingItem.name}" ist wieder im Vorrat (${existingItem.stockCount} Stk).`, 'check-circle');
+          renderAll();
+        } else {
+          // Fall b: Bereits im Vorrat vorhanden -> Menge +1
+          existingItem.stockCount = (existingItem.stockCount || 0) + 1;
+          existingItem.updatedAt = Date.now();
+          saveItems();
+          playBeep('added');
+          showToast(`Bestand erhöht: "${existingItem.name}" (+1) → Jetzt ${existingItem.stockCount} Stk.`, 'plus');
+          renderAll();
+        }
+      } else {
+        // Fall c: Komplett neu -> Open Food Facts API abfragen
+        showToast('Neues Produkt! Frage Open Food Facts ab...', 'sparkles');
+        const apiData = await fetchOpenFoodFactsData(barcode);
+
+        openProductModalWithData({
+          barcode: barcode,
+          name: apiData.name || '',
+          brand: apiData.brand || '',
+          quantityUnit: apiData.quantityUnit || '',
+          category: apiData.category || 'Lebensmittel',
+          stockCount: 1
+        });
+      }
+    }
+
+    // Open Food Facts API Abfrage
+    async function fetchOpenFoodFactsData(barcode) {
+      try {
+        const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+        if (!response.ok) throw new Error('Netzwerkfehler');
+        const data = await response.json();
+
+        if (data.status === 1 && data.product) {
+          const p = data.product;
+          
+          // Ermittle bestmöglichen Namen
+          const name = p.product_name_de || p.product_name || p.generic_name_de || p.generic_name || '';
+          const brand = p.brands || '';
+          const quantityUnit = p.quantity || '';
+
+          // Automatische Kategorie-Erkennung
+          let category = 'Lebensmittel';
+          const cats = (p.categories || '').toLowerCase();
+          if (cats.includes('beverage') || cats.includes('getränk') || cats.includes('boisson') || cats.includes('wasser') || cats.includes('juice')) {
+            category = 'Getränke';
+          } else if (cats.includes('dairy') || cats.includes('milch') || cats.includes('fromage') || cats.includes('cheese') || cats.includes('käse') || cats.includes('yogurt')) {
+            category = 'Milchprodukte';
+          } else if (cats.includes('snack') || cats.includes('chocolate') || cats.includes('schokolade') || cats.includes('biscuit') || cats.includes('süß')) {
+            category = 'Snacks & Süßes';
+          } else if (cats.includes('clean') || cats.includes('detergent') || cats.includes('seife') || cats.includes('reinigung')) {
+            category = 'Haushalt & Reinigung';
+          }
+
+          return { name, brand, quantityUnit, category };
+        }
+      } catch (err) {
+        console.warn('Open Food Facts API nicht erreichbar oder Produkt nicht gelistet:', err);
+      }
+      return { name: '', brand: '', quantityUnit: '', category: 'Lebensmittel' };
+    }
+
+    // ================= PRODUKT-AKTIONEN =================
+
+    // Aufgebraucht: Wandert sofort auf die Einkaufsliste
+    function markAsUsedUp(id) {
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+
+      item.stockCount = 0;
+      item.onShoppingList = true;
+      item.shoppingAmount = 1;
+      item.updatedAt = Date.now();
+      saveItems();
+      renderAll();
+      showToast(`"${item.name}" als aufgebraucht markiert und auf die Einkaufsliste gesetzt!`, 'shopping-bag');
+    }
+
+    // Mengensteuerung im Vorrat (+ / -)
+    function updateStock(id, delta) {
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+
+      const newCount = (item.stockCount || 0) + delta;
+      if (newCount <= 0) {
+        // Wenn auf 0 reduziert wird, automatisch zur Einkaufsliste vorschlagen
+        item.stockCount = 0;
+        item.onShoppingList = true;
+        showToast(`Bestand leer! "${item.name}" auf Einkaufsliste gesetzt.`, 'shopping-cart');
+      } else {
+        item.stockCount = newCount;
+      }
+      item.updatedAt = Date.now();
+      saveItems();
+      renderAll();
+    }
+
+    // Gekauft von der Einkaufsliste -> Zurück in den Vorrat
+    function markAsPurchased(id) {
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+
+      item.onShoppingList = false;
+      item.stockCount = (item.stockCount || 0) + (item.shoppingAmount || 1);
+      item.shoppingAmount = 1;
+      item.updatedAt = Date.now();
+      saveItems();
+      playBeep('added');
+      renderAll();
+      showToast(`"${item.name}" eingekauft & im Vorrat hinterlegt.`, 'check');
+    }
+
+    // Alle gekauften Artikel auf einmal einlagern
+    function clearCompletedShopping() {
+      let count = 0;
+      items.forEach(item => {
+        if (item.onShoppingList) {
+          item.onShoppingList = false;
+          item.stockCount = (item.stockCount || 0) + (item.shoppingAmount || 1);
+          count++;
+        }
+      });
+      if (count > 0) {
+        saveItems();
+        renderAll();
+        showToast(`${count} Artikel in den Vorrat eingelagert.`, 'check-circle');
+      } else {
+        showToast('Keine offenen Artikel auf der Einkaufsliste.', 'info');
+      }
+    }
+
+    // Artikel löschen
+    function deleteProduct(id) {
+      const item = items.find(i => i.id === id);
+      const name = item ? item.name : 'Artikel';
+      items = items.filter(i => i.id !== id);
+      saveItems();
+      renderAll();
+      showToast(`"${name}" wurde entfernt.`, 'trash-2');
+    }
+
+    // ================= MODAL PRODUKT FORMULAR =================
+
+    function openManualAddModal() {
+      openProductModalWithData({
+        barcode: '',
+        name: '',
+        brand: '',
+        quantityUnit: '',
+        category: 'Lebensmittel',
+        stockCount: 1
+      });
+    }
+
+    function editProduct(id) {
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      openProductModalWithData(item);
+    }
+
+    function openProductModalWithData(data) {
+      document.getElementById('formProductId').value = data.id || '';
+      document.getElementById('formBarcode').value = data.barcode || '';
+      document.getElementById('formName').value = data.name || '';
+      document.getElementById('formBrand').value = data.brand || '';
+      document.getElementById('formQuantityUnit').value = data.quantityUnit || '';
+      document.getElementById('formCategory').value = data.category || 'Lebensmittel';
+      document.getElementById('formStockCount').value = data.stockCount !== undefined ? data.stockCount : 1;
+
+      const title = document.getElementById('productModalTitle');
+      const sub = document.getElementById('productModalSub');
+      if (data.id) {
+        title.textContent = 'Produkt bearbeiten';
+        sub.textContent = 'Passe Stammdaten oder Bestand an';
+      } else {
+        title.textContent = 'Produkt im Vorrat anlegen';
+        sub.textContent = data.name ? 'Produktdetails gefunden!' : 'Barcode oder Namen eingeben';
+      }
+
+      document.getElementById('productModal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeProductModal() {
+      document.getElementById('productModal').classList.add('hidden');
+    }
+
+    function adjustFormCount(delta) {
+      const input = document.getElementById('formStockCount');
+      let val = parseInt(input.value) || 0;
+      val = Math.max(0, val + delta);
+      input.value = val;
+    }
+
+    async function fetchApiForBarcode() {
+      const barcode = document.getElementById('formBarcode').value.trim();
+      if (!barcode) {
+        showToast('Bitte zuerst einen Barcode eingeben', 'alert-circle');
+        return;
+      }
+      showToast('Lade Daten von Open Food Facts...', 'loader');
+      const apiData = await fetchOpenFoodFactsData(barcode);
+      if (apiData.name) {
+        document.getElementById('formName').value = apiData.name;
+        if (apiData.brand) document.getElementById('formBrand').value = apiData.brand;
+        if (apiData.quantityUnit) document.getElementById('formQuantityUnit').value = apiData.quantityUnit;
+        if (apiData.category) document.getElementById('formCategory').value = apiData.category;
+        showToast('Produktdaten erfolgreich übernommen!', 'check');
+      } else {
+        showToast('Kein Treffer in der Datenbank. Bitte Namen manuell eintragen.', 'info');
+      }
+    }
+
+    function saveProductModal(e) {
+      e.preventDefault();
+      const id = document.getElementById('formProductId').value;
+      const barcode = document.getElementById('formBarcode').value.trim();
+      const name = document.getElementById('formName').value.trim();
+      const brand = document.getElementById('formBrand').value.trim();
+      const quantityUnit = document.getElementById('formQuantityUnit').value.trim();
+      const category = document.getElementById('formCategory').value;
+      const stockCount = parseInt(document.getElementById('formStockCount').value) || 0;
+
+      if (!barcode || !name) {
+        showToast('Barcode und Name sind Pflichtfelder.', 'alert-triangle');
+        return;
+      }
+
+      if (id) {
+        // Update
+        const item = items.find(i => i.id === id);
+        if (item) {
+          item.barcode = barcode;
+          item.name = name;
+          item.brand = brand;
+          item.quantityUnit = quantityUnit;
+          item.category = category;
+          item.stockCount = stockCount;
+          item.updatedAt = Date.now();
+        }
+      } else {
+        // Neu anlegen oder bestehenden Barcode aktualisieren
+        const existing = items.find(i => i.barcode === barcode);
+        if (existing) {
+          existing.name = name;
+          existing.brand = brand;
+          existing.quantityUnit = quantityUnit;
+          existing.category = category;
+          existing.stockCount = stockCount;
+          existing.onShoppingList = false;
+        } else {
+          items.push({
+            id: 'item-' + Date.now(),
+            barcode,
+            name,
+            brand,
+            quantityUnit,
+            category,
+            stockCount,
+            onShoppingList: false,
+            shoppingAmount: 1,
+            updatedAt: Date.now()
+          });
+        }
+      }
+
+      saveItems();
+      closeProductModal();
+      renderAll();
+      showToast(`"${name}" gespeichert.`, 'check-circle');
+    }
+
+    // ================= BACKUP & EINSTELLUNGEN =================
+
+    function openDataSettingsModal() {
+      document.getElementById('settingsModal').classList.remove('hidden');
+    }
+
+    function closeDataSettingsModal() {
+      document.getElementById('settingsModal').classList.add('hidden');
+    }
+
+    function loadSampleData(confirmReload = false) {
+      items = [...SAMPLE_ITEMS];
+      saveItems();
+      renderAll();
+      closeDataSettingsModal();
+      showToast('Beispieldaten wurden erfolgreich geladen!', 'refresh-cw');
+    }
+
+    function clearAllData() {
+      items = [];
+      saveItems();
+      renderAll();
+      closeDataSettingsModal();
+      showToast('Alle Vorratsdaten wurden gelöscht.', 'trash-2');
+    }
+
+    function exportDataJson() {
+      const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(items, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", jsonStr);
+      downloadAnchor.setAttribute("download", `vorratskammer_backup_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showToast('Backup-Datei erstellt.', 'download');
+    }
+
+    // ================= TOAST BENACHRICHTIGUNG =================
+    let toastTimeout;
+    function showToast(message, icon = 'check-circle') {
+      const toast = document.getElementById('toast');
+      const msg = document.getElementById('toastMessage');
+      const iconEl = document.getElementById('toastIcon');
+
+      clearTimeout(toastTimeout);
+      msg.textContent = message;
+      iconEl.setAttribute('data-lucide', icon);
+      lucide.createIcons();
+
+      toast.classList.remove('opacity-0', '-translate-y-2');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', '-translate-y-2');
+      }, 3000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>
